@@ -171,7 +171,6 @@ def do_get_image_info(image_name)
 end
 
 
-
 # Given a mammogram name and the path to the image info file, get the
 # image dimensions and digitizer name string.
 def get_image_info(image_name)
@@ -187,6 +186,22 @@ def get_image_info(image_name)
 
   return ret_val
 end
+
+def get_image_info_from_ics_file(image_name, ics_file)
+  # Get the image dimensions and digitizer type for the specified
+  # image as a string.
+  image_info = get_image_dims_and_digitizer(image_name, ics_file)
+  
+  # Now output the result to standard output.
+  all_ok = !image_info[:image_dims].nil? && !image_info[:digitizer].nil? # Is everything OK?
+  if all_ok
+    ret_val = image_info[:image_dims] + ' ' + image_info[:digitizer]
+  end
+
+  return ret_val
+end
+
+
 
 # Return a non-existant random filename.
 def get_temp_filename
@@ -224,7 +239,7 @@ end
 # file.
 def ljpeg_to_pnm(ljpeg_file, dims_and_digitizer)
   # First convert it to raw format.
-  command = "./jpeg.exe -d -s #{ljpeg_file}"
+  command = "./jpeg -d -s #{ljpeg_file}"
   `#{command}` # Run it.
   raw_file = ljpeg_file + '.1' # The jpeg program adds a .1 suffix.
   
@@ -234,7 +249,7 @@ def ljpeg_to_pnm(ljpeg_file, dims_and_digitizer)
   end
 
   # Now convert the raw file to PNM and delete the raw file.
-  command = "./ddsmraw2pnm.exe #{raw_file} #{dims_and_digitizer}"
+  command = "./ddsmraw2pnm #{raw_file} #{dims_and_digitizer}"
   pnm_file = `#{command}`
   File.delete(raw_file)
   if $? != 0
@@ -262,35 +277,34 @@ end
 # The entry point of the program.
 def main
   # Check to see if the input is sensible.
-  check_inputs(ARGV)
-  
-  image_name = ARGV[0]
-  
-  # Get the image dimensions and digitizer name string for the
-  # specified image.
-  image_info = get_image_info(image_name)
+  # check_inputs(ARGV)
 
-  # Get the LJPEG file from the mirror of the FTP site, returning the
-  # path to the local file.
-  ljpeg_file = get_ljpeg(image_name)
-  
-  # Convert the LJPEG file to PNM and delete the original LJPEG.
-  pnm_file = ljpeg_to_pnm(ljpeg_file, image_info)
-  File.delete(ljpeg_file)
+  root_dir = ARGV[0]
 
-  # Now convert the PNM file to PNG and delete the PNG file.
-  target_png_file = image_name + '.png'
-  png_file = pnm_to_png(pnm_file, target_png_file)
-  File.delete(pnm_file)
-
-  # Test to see if we got something.
-  if !FileTest.exist?(png_file)
-    raise 'Could not create PNG file.'
-    exit(-1)
+  if root_dir[-1] != '/'
+    root_dir = root_dir + "/"
   end
+  
+  # get all LJPEG files from the dir
+  ljpeg_files = Dir.glob(root_dir + "**/*.LJPEG")
+  
+  ljpeg_files.each do |ljpeg_file|
+    # get image name and ics file name
+    s = ljpeg_file.split('/')
+    
+    image_name = s.pop[0...-6] # delete file extension
+    ics_file = Dir.glob(s.join('/') + "/*.ics")[0]
+    
+    # Get the image dimensions and digitizer name string for the
+    # specified image.
+    image_info = get_image_info_from_ics_file(image_name, ics_file)
 
-  # Display the path to the file.
-  puts File.expand_path(png_file)
+    # Convert the LJPEG file to PNM and delete the original LJPEG.
+    pnm_file = ljpeg_to_pnm(ljpeg_file, image_info)
+
+    # # Display the path to the file.
+    puts File.expand_path(pnm_file)
+  end
 
   exit(0)
 end
